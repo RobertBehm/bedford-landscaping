@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  SCHEDULED
+  COMPLETED
+  ARCHIVED
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  name          String
+  email         String?
+  phone         String
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+
+  service       String?
+  message       String
+
+  status        LeadStatus @default(NEW)
+
+  sourceUrl     String?
+
+  // If a lead is tied to a signed-in client, store their Clerk user id
+  customerUserId String?
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([customerUserId])
+  @@index([email])
+}
