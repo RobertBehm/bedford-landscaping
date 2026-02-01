@@ -1,21 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { LeadStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
-import { updateLeadStatusAction } from "@/lib/server-actions/leads";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { updateLeadStatusAction } from "@/lib/server-actions/leads";
 
-export default function UpdateLeadStatusForm({ leadId, status }: { leadId: string; status: LeadStatus }) {
+export default function UpdateLeadStatusForm({
+  leadId,
+  status,
+}: {
+  leadId: string;
+  status: LeadStatus;
+}) {
   const [value, setValue] = useState<LeadStatus>(status);
+  const [isPending, startTransition] = useTransition();
 
   return (
-    <form action={updateLeadStatusAction} className="flex items-center gap-2">
-      <input type="hidden" name="leadId" value={leadId} />
-      <input type="hidden" name="status" value={value} />
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
 
-      <Select value={value} onValueChange={(v) => setValue(v as LeadStatus)}>
-        <SelectTrigger className="w-[160px]">
+        const fd = new FormData();
+        fd.set("leadId", leadId);
+        fd.set("status", value);
+
+        startTransition(async () => {
+          toast.dismiss();
+          toast.loading("Saving...");
+
+          const res = await updateLeadStatusAction(fd);
+
+          toast.dismiss();
+          if (res.ok) toast.success(res.message);
+          else toast.error(res.error);
+        });
+      }}
+      className="flex items-center gap-2"
+    >
+      <Select value={value} onValueChange={(v) => setValue(v as LeadStatus)} disabled={isPending}>
+        <SelectTrigger className="w-[170px]">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -27,8 +52,8 @@ export default function UpdateLeadStatusForm({ leadId, status }: { leadId: strin
         </SelectContent>
       </Select>
 
-      <Button type="submit" size="sm">
-        Save
+      <Button type="submit" size="sm" disabled={isPending}>
+        {isPending ? "Saving..." : "Save"}
       </Button>
     </form>
   );

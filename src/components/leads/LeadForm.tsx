@@ -1,7 +1,10 @@
+"use client";
+
+import { useRef, useTransition } from "react";
 import { SERVICES } from "@/lib/services";
 import { BUSINESS } from "@/lib/constants";
-import { leadCreateSchema } from "@/lib/validation";
-import { prisma } from "@/lib/db";
+import { createLeadAction } from "@/lib/server-actions/leads";
+import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,45 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-async function createLead(formData: FormData) {
-  "use server";
-
-  const raw = {
-    name: String(formData.get("name") || ""),
-    email: String(formData.get("email") || ""),
-    phone: String(formData.get("phone") || ""),
-    address: String(formData.get("address") || ""),
-    city: String(formData.get("city") || ""),
-    state: String(formData.get("state") || ""),
-    zip: String(formData.get("zip") || ""),
-    service: String(formData.get("service") || ""),
-    message: String(formData.get("message") || ""),
-    sourceUrl: String(formData.get("sourceUrl") || ""),
-  };
-
-  const parsed = leadCreateSchema.safeParse(raw);
-  if (!parsed.success) {
-    // For now: silently fail. Next step: show errors with useFormState/useFormStatus.
-    return;
-  }
-
-  await prisma.lead.create({
-    data: {
-      name: parsed.data.name,
-      email: parsed.data.email?.trim() ? parsed.data.email.trim() : null,
-      phone: parsed.data.phone.trim(),
-      address: parsed.data.address?.trim() ? parsed.data.address.trim() : null,
-      city: parsed.data.city?.trim() ? parsed.data.city.trim() : null,
-      state: parsed.data.state?.trim() ? parsed.data.state.trim() : null,
-      zip: parsed.data.zip?.trim() ? parsed.data.zip.trim() : null,
-      service: parsed.data.service?.trim() ? parsed.data.service.trim() : null,
-      message: parsed.data.message.trim(),
-      sourceUrl: parsed.data.sourceUrl?.trim() ? parsed.data.sourceUrl.trim() : null,
-    },
-  });
-}
-
 export default function LeadForm() {
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [isPending, startTransition] = useTransition();
+
   return (
     <Card>
       <CardHeader>
@@ -58,8 +26,34 @@ export default function LeadForm() {
       </CardHeader>
 
       <CardContent>
-        <form action={createLead} className="grid gap-4">
-          <input type="hidden" name="sourceUrl" value="" />
+        <form
+          ref={formRef}
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = formRef.current;
+            if (!form) return;
+
+            const fd = new FormData(form);
+
+            startTransition(async () => {
+              toast.dismiss();
+              toast.loading("Submitting...");
+
+              const res = await createLeadAction(fd);
+
+              toast.dismiss();
+              if (res.ok) {
+                toast.success(res.message);
+                form.reset();
+              } else {
+                toast.error(res.error);
+              }
+            });
+          }}
+        >
+          {/* if you want to store where it came from */}
+          <input type="hidden" name="sourceUrl" value={typeof window !== "undefined" ? window.location.href : ""} />
 
           <div className="grid gap-2">
             <Label htmlFor="name">Name</Label>
@@ -78,12 +72,12 @@ export default function LeadForm() {
 
           <div className="grid gap-2">
             <Label htmlFor="service">Service</Label>
-            {/* Native select is perfectly fine for forms. If you want shadcn Select, we’ll do it with client state. */}
             <select
               id="service"
               name="service"
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               defaultValue=""
+              disabled={isPending}
             >
               <option value="">Select a service</option>
               {SERVICES.map((s) => (
@@ -101,31 +95,32 @@ export default function LeadForm() {
               name="message"
               className="min-h-[120px]"
               placeholder="What do you need done? When do you want it done?"
+              disabled={isPending}
             />
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="address">Address (optional)</Label>
-            <Input id="address" name="address" placeholder="Street address" />
+            <Input id="address" name="address" placeholder="Street address" disabled={isPending} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="grid gap-2">
               <Label htmlFor="city">City</Label>
-              <Input id="city" name="city" placeholder="Manchester" />
+              <Input id="city" name="city" placeholder="Manchester" disabled={isPending} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="state">State</Label>
-              <Input id="state" name="state" placeholder="NH" />
+              <Input id="state" name="state" placeholder="NH" disabled={isPending} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="zip">ZIP</Label>
-              <Input id="zip" name="zip" placeholder="03101" />
+              <Input id="zip" name="zip" placeholder="03101" disabled={isPending} />
             </div>
           </div>
 
-          <Button type="submit" className="w-full">
-            Submit
+          <Button type="submit" className="w-full" disabled={isPending}>
+            {isPending ? "Submitting..." : "Submit"}
           </Button>
 
           <p className="text-xs text-muted-foreground">
