@@ -1,14 +1,16 @@
-// components/admin/admin-nav.tsx
-import { LeadStatus } from "@prisma/client";
-
 export type AdminNavItem = {
   title: string;
-  href?: string;
-  badge?: string;
   children?: { title: string; href: string; badge?: string }[];
 };
 
 export const adminNav: AdminNavItem[] = [
+  {
+    title: "Overview",
+    children: [
+      { title: "Dashboard", href: "/admin" },
+      { title: "Tasks", href: "/admin/tasks" },
+    ],
+  },
   {
     title: "Inbox",
     children: [
@@ -32,13 +34,6 @@ export const adminNav: AdminNavItem[] = [
       { title: "Projects", href: "/admin/projects" },
       { title: "Jobs / Work Orders", href: "/admin/jobs" },
       { title: "Calendar", href: "/admin/calendar" },
-    ],
-  },
-  {
-    title: "Insights",
-    children: [
-      { title: "Pipeline", href: "/admin/pipeline" },
-      { title: "Analytics", href: "/admin/analytics" },
     ],
   },
   {

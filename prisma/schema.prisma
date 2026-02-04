@@ -7,6 +7,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum LeadStatus {
@@ -17,30 +18,141 @@ enum LeadStatus {
   ARCHIVED
 }
 
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskRecurrence {
+  NONE
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
 model Lead {
-  id             String     @id @default(cuid())
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  name           String
-  email          String?
-  phone          String
-  address        String?
-  city           String?
-  state          String?
-  zip            String?
+  name    String
+  email   String?
+  phone   String
+  address String?
+  city    String?
+  state   String?
+  zip     String?
 
-  service        String?
-  message        String
+  service String?
+  message String
 
-  status         LeadStatus @default(NEW)
+  status LeadStatus @default(NEW)
 
-  sourceUrl      String?
+  sourceUrl String?
 
   customerUserId String?
+
+  // ✅ Convert Lead -> Client
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  notes LeadNote[]
+  tasks Task[]
 
   @@index([createdAt])
   @@index([status])
   @@index([customerUserId])
   @@index([email])
+  @@index([clientId])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String? // Clerk user id (optional)
+  body      String
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title    String
+  body     String?
+  dueAt    DateTime
+  priority TaskPriority @default(MEDIUM)
+
+  completedAt DateTime?
+
+  recurrence TaskRecurrence @default(NONE)
+
+  // ✅ Can be linked to a lead and/or client
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+
+  @@index([dueAt])
+  @@index([completedAt])
+  @@index([priority])
+  @@index([leadId])
+  @@index([clientId])
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Primary identity
+  name  String
+  email String?
+  phone String?
+
+  // Useful operational metadata
+  tags  String? // comma-separated for MVP (later replace with join table)
+  notes String? // internal notes about client
+
+  // Relations
+  leads     Lead[]
+  addresses ClientAddress[]
+  tasks     Task[]
+
+  @@index([createdAt])
+  @@index([name])
+  @@index([email])
+  @@index([phone])
+}
+
+model ClientAddress {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  label    String? // "Home", "Rental", "Commercial", etc.
+  address  String
+  city     String?
+  state    String?
+  zip      String?
+  gateCode String?
+  notes    String?
+
+  isPrimary Boolean @default(false)
+
+  @@index([clientId])
+  @@index([isPrimary])
 }

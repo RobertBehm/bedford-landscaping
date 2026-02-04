@@ -75,8 +75,6 @@ export default async function AdminLeadsPage({
     message: l.message,
     status: l.status,
     sourceUrl: l.sourceUrl,
-
-    clientId: l.clientId,
   }));
 
   return (
@@ -84,7 +82,7 @@ export default async function AdminLeadsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">Leads</h2>
-          <p className="text-sm text-muted-foreground">Click a lead to view details, tasks, notes, and conversion.</p>
+          <p className="text-sm text-muted-foreground">Click a lead to view details, tasks, and notes.</p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
