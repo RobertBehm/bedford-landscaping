@@ -1,62 +1,105 @@
+// src/app/(admin)/admin/tasks/page.tsx
+
 import { prisma } from "@/lib/db";
 import { requireOrgAdmin } from "@/lib/authz";
-import TaskListClient from "@/components/admin/TaskListClient";
-import type { TaskRow } from "@/components/admin/TaskListClient";
+import TaskListClient, { type TaskRow } from "@/components/admin/TaskListClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-function serialize(tasks: any[]): TaskRow[] {
+type SearchParams = {
+  show?: string; // "open" | "done" | "all" (optional)
+};
+
+function utcDisplayFromDate(d: Date) {
+  const iso = d.toISOString();
+  return iso.replace("T", " ").slice(0, 16) + " UTC";
+}
+
+function serialize(tasks: Array<{
+  id: string;
+  title: string;
+  body: string | null;
+  dueAt: Date;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  recurrence: "NONE" | "WEEKLY" | "BIWEEKLY" | "MONTHLY";
+  completedAt: Date | null;
+  leadId: string | null;
+  clientId: string | null;
+}>): TaskRow[] {
   return tasks.map((t) => ({
     id: t.id,
     title: t.title,
     body: t.body,
-    dueAt: t.dueAt.toISOString(),
+
+    dueAtIso: t.dueAt.toISOString(),
+    dueAtDisplay: utcDisplayFromDate(t.dueAt),
+
     priority: t.priority,
     recurrence: t.recurrence,
-    completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+
+    completedAtIso: t.completedAt ? t.completedAt.toISOString() : null,
+
     leadId: t.leadId,
   }));
 }
 
-export default async function AdminTasksPage() {
+export default async function AdminTasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   await requireOrgAdmin();
 
-  const [openTasks, doneTasks] = await Promise.all([
-    prisma.task.findMany({
-      where: { completedAt: null },
-      orderBy: [{ dueAt: "asc" }],
-      take: 200,
-    }),
-    prisma.task.findMany({
-      where: { completedAt: { not: null } },
-      orderBy: [{ completedAt: "desc" }],
-      take: 50,
-    }),
-  ]);
+  const sp = await searchParams;
+  const show = (sp.show ?? "open").toLowerCase();
+
+  const where =
+    show === "done"
+      ? { completedAt: { not: null } }
+      : show === "all"
+        ? {}
+        : { completedAt: null };
+
+  const tasks = await prisma.task.findMany({
+    where,
+    orderBy:
+      show === "done"
+        ? [{ completedAt: "desc" }]
+        : [{ dueAt: "asc" }, { priority: "desc" }],
+    take: show === "done" ? 100 : 200,
+    select: {
+      id: true,
+      title: true,
+      body: true,
+      dueAt: true,
+      priority: true,
+      recurrence: true,
+      completedAt: true,
+      leadId: true,
+      clientId: true,
+    },
+  });
+
+  const rows = serialize(tasks);
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Tasks</h2>
         <p className="text-sm text-muted-foreground">
-          Open tasks first, then recent completed.
+          Everything due, overdue, and completed follow-ups.
         </p>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Open</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">
+            {show === "done" ? "Completed" : show === "all" ? "All" : "Open"}
+          </CardTitle>
+          <div className="text-xs text-muted-foreground">{rows.length} shown</div>
         </CardHeader>
-        <CardContent>
-          <TaskListClient tasks={serialize(openTasks)} />
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Completed (recent)</CardTitle>
-        </CardHeader>
         <CardContent>
-          <TaskListClient tasks={serialize(doneTasks)} showReopen />
+          <TaskListClient tasks={rows} showReopen={show !== "open"} />
         </CardContent>
       </Card>
     </div>
