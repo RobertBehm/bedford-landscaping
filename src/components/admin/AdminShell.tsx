@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+
 import AdminTopbar from "@/components/admin/AdminTopbar";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -19,15 +22,21 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                   Open Menu
                 </Button>
               </SheetTrigger>
+
+              {/* ✅ Make sheet content scrollable so long menus work */}
               <SheetContent side="left" className="p-0 w-[320px]">
-                <AdminSidebar />
+                <div className="h-full overflow-y-auto">
+                  <AdminSidebar />
+                </div>
               </SheetContent>
             </Sheet>
           </div>
 
           {/* Desktop sidebar */}
           <aside className="hidden md:block md:sticky md:top-[72px] md:h-[calc(100vh-72px)] rounded-xl border bg-card overflow-hidden">
-            <AdminSidebar />
+            <div className="h-full overflow-y-auto">
+              <AdminSidebar />
+            </div>
           </aside>
 
           <main className="min-w-0">{children}</main>

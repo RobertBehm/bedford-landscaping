@@ -8,6 +8,7 @@ export const adminNav: AdminNavItem[] = [
     title: "Overview",
     children: [
       { title: "Dashboard", href: "/admin" },
+      { title: "Analytics", href: "/admin/analytics" },
       { title: "Tasks", href: "/admin/tasks" },
     ],
   },
@@ -31,8 +32,9 @@ export const adminNav: AdminNavItem[] = [
   {
     title: "Work",
     children: [
-      { title: "Projects", href: "/admin/projects" },
       { title: "Jobs / Work Orders", href: "/admin/jobs" },
+      { title: "Service Plans", href: "/admin/plans" }, // ✅ recurring revenue engine
+      { title: "Invoices", href: "/admin/invoices" }, 
       { title: "Calendar", href: "/admin/calendar" },
     ],
   },

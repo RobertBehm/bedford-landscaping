@@ -1,11 +1,15 @@
 import type { LeadStatus } from "@prisma/client";
 
+import Link from "next/link";
+
 import { prisma } from "@/lib/db";
 import { requireOrgAdmin } from "@/lib/authz";
+
+import BottlenecksCard from "@/components/admin/BottlenecksCard";
+import InvoiceAlertsCard from "@/components/admin/InvoiceAlertsCard";
 import LeadsListClient from "@/components/admin/LeadsListClient";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 type SearchParams = {
@@ -20,12 +24,20 @@ function normalizeStatus(raw?: string): LeadStatus | null {
   return (VALID_STATUSES as string[]).includes(s) ? (s as LeadStatus) : null;
 }
 
+// Keep this UTC-safe to avoid hydration warnings
 function utcDisplayFromDate(d: Date) {
   const iso = d.toISOString();
   return iso.replace("T", " ").slice(0, 16) + " UTC";
 }
 
-export default async function AdminLeadsPage({
+/**
+ * Admin dashboard
+ *
+ * TODO: Add KPI cards (MRR, AR aging totals, lead->job conversion, close rate).
+ * TODO: Add today's jobs + upcoming week workload.
+ * TODO: Add "bottleneck" signals (overdue tasks, overdue invoices w/o reminders).
+ */
+export default async function AdminDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
@@ -34,6 +46,7 @@ export default async function AdminLeadsPage({
 
   const sp = await searchParams;
 
+  // Optional filters (in case you later want dashboard search)
   const q = (sp.q ?? "").trim();
   const status = normalizeStatus(sp.status);
 
@@ -55,11 +68,29 @@ export default async function AdminLeadsPage({
 
   const where = filters.length ? { AND: filters } : undefined;
 
-  const leads = await prisma.lead.findMany({
-    where,
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    take: 200,
-  });
+  const [leads, leadCounts] = await Promise.all([
+    prisma.lead.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      take: 20, // dashboard preview
+    }),
+    prisma.lead.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+  ]);
+
+  const counts = {
+    NEW: 0,
+    CONTACTED: 0,
+    SCHEDULED: 0,
+    COMPLETED: 0,
+    ARCHIVED: 0,
+  } satisfies Record<LeadStatus, number>;
+
+  for (const row of leadCounts) {
+    counts[row.status] = row._count._all;
+  }
 
   const serialized = leads.map((l) => ({
     id: l.id,
@@ -79,61 +110,80 @@ export default async function AdminLeadsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Leads</h2>
-          <p className="text-sm text-muted-foreground">Click a lead to view details, tasks, and notes.</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            High-signal overview: collections, bottlenecks, inbox, and what needs attention.
+          </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <form className="flex items-center gap-2">
-            <Input
-              name="q"
-              defaultValue={q}
-              placeholder="Search name, phone, email, service..."
-              className="w-full sm:w-[320px]"
-            />
-
-            <select
-              name="status"
-              defaultValue={status ?? ""}
-              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All</option>
-              {VALID_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-
-            <Button type="submit" variant="secondary">
-              Apply
-            </Button>
-          </form>
-
-          {(q || status) && (
-            <Button asChild variant="ghost">
-              <Link href="/admin/leads">Clear</Link>
-            </Button>
-          )}
+        <div className="flex gap-2">
+          <Button asChild variant="secondary">
+            <Link href="/admin/leads">Open Leads</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href="/admin/invoices">Open Invoices</Link>
+          </Button>
         </div>
       </div>
 
+      {/* Row 1: Money + Bottlenecks */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <InvoiceAlertsCard />
+        <BottlenecksCard />
+      </div>
+
+      {/* Row 2: Lead summary */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Latest</CardTitle>
-          <div className="text-xs text-muted-foreground">{serialized.length} shown (max 200)</div>
+          <CardTitle className="text-base">Lead Inbox</CardTitle>
+          <Button asChild variant="ghost" className="h-8 px-2">
+            <Link href="/admin/leads">View all</Link>
+          </Button>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {serialized.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No leads found.</div>
-          ) : (
-            <LeadsListClient leads={serialized as any} />
-          )}
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">New</div>
+              <div className="text-xl font-semibold">{counts.NEW}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">Contacted</div>
+              <div className="text-xl font-semibold">{counts.CONTACTED}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">Scheduled</div>
+              <div className="text-xl font-semibold">{counts.SCHEDULED}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">Completed</div>
+              <div className="text-xl font-semibold">{counts.COMPLETED}</div>
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground">
+            TODO: Add lead→client conversion rate and “time to first contact”.
+          </div>
         </CardContent>
       </Card>
+
+      {/* Recent leads preview */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Recent Leads</CardTitle>
+          <div className="text-xs text-muted-foreground">{serialized.length} shown (max 20)</div>
+        </CardHeader>
+
+        <CardContent>
+          <LeadsListClient leads={serialized} />
+        </CardContent>
+      </Card>
+
+      <div className="text-xs text-muted-foreground">
+        TODO: Add KPI cards: MRR, AR aging totals, close rate, lead response time, jobs completed per week.
+      </div>
     </div>
   );
 }

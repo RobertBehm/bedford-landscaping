@@ -31,6 +31,44 @@ enum TaskRecurrence {
   MONTHLY
 }
 
+enum JobStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  DONE
+  INVOICED
+  PAID
+  CANCELED
+}
+
+enum ServicePlanStatus {
+  ACTIVE
+  PAUSED
+  CANCELED
+}
+
+enum ServicePlanFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  CARD
+  ACH
+  OTHER
+}
+
+enum InvoiceNoteChannel {
+  CALL
+  TEXT
+  EMAIL
+  IN_PERSON
+  OTHER
+}
+
 model Lead {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -53,12 +91,12 @@ model Lead {
 
   customerUserId String?
 
-  // ✅ Convert Lead -> Client
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   notes LeadNote[]
   tasks Task[]
+  jobs  Job[]
 
   @@index([createdAt])
   @@index([status])
@@ -70,7 +108,7 @@ model Lead {
 model LeadNote {
   id        String   @id @default(cuid())
   leadId    String
-  authorId  String? // Clerk user id (optional)
+  authorId  String?
   body      String
   createdAt DateTime @default(now())
 
@@ -94,7 +132,6 @@ model Task {
 
   recurrence TaskRecurrence @default(NONE)
 
-  // ✅ Can be linked to a lead and/or client
   leadId String?
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
@@ -115,19 +152,18 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Primary identity
   name  String
   email String?
   phone String?
 
-  // Useful operational metadata
-  tags  String? // comma-separated for MVP (later replace with join table)
-  notes String? // internal notes about client
+  tags  String?
+  notes String?
 
-  // Relations
-  leads     Lead[]
-  addresses ClientAddress[]
-  tasks     Task[]
+  leads        Lead[]
+  addresses    ClientAddress[]
+  tasks        Task[]
+  jobs         Job[]
+  servicePlans ServicePlan[] // ✅ opposite side for ServicePlan.client
 
   @@index([createdAt])
   @@index([name])
@@ -143,7 +179,7 @@ model ClientAddress {
   clientId String
   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  label    String? // "Home", "Rental", "Commercial", etc.
+  label    String?
   address  String
   city     String?
   state    String?
@@ -153,6 +189,140 @@ model ClientAddress {
 
   isPrimary Boolean @default(false)
 
+  jobs         Job[]
+  servicePlans ServicePlan[] // ✅ opposite side for ServicePlan.address
+
   @@index([clientId])
   @@index([isPrimary])
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status JobStatus @default(DRAFT)
+
+  title String
+  notes String?
+
+  // scheduling
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+
+  // money
+  estimatedPriceCents Int?
+  actualPriceCents    Int?
+
+  // relations
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  addressId String?
+  address   ClientAddress? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  servicePlanId String?
+  servicePlan   ServicePlan? @relation(fields: [servicePlanId], references: [id], onDelete: SetNull)
+  // TODO: Invoicing model will likely need a different dedupe key (occurrenceId / rruleseq) later.
+
+  invoice Invoice?
+
+  @@unique([servicePlanId, scheduledStart])
+  @@index([servicePlanId])
+  @@index([status])
+  @@index([scheduledStart])
+  @@index([clientId])
+  @@index([addressId])
+  @@index([leadId])
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Business identifiers
+  number   Int       @unique // simple incrementing integer
+  issuedAt DateTime  @default(now())
+  dueAt    DateTime?
+
+  // Amounts
+  totalCents      Int
+  amountPaidCents Int @default(0)
+
+  // Payment tracking (MVP)
+  paidAt        DateTime?
+  paymentMethod PaymentMethod?
+
+  notes InvoiceNote[]
+
+  // Relations (1 invoice per job for MVP)
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([issuedAt])
+  @@index([dueAt])
+  @@index([paidAt])
+}
+
+model InvoiceNote {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  channel InvoiceNoteChannel
+  body    String
+
+  createdByUserId String? // Clerk user id
+
+  @@index([invoiceId])
+  @@index([createdAt])
+  @@index([channel])
+}
+
+model ServicePlan {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status    ServicePlanStatus    @default(ACTIVE)
+  frequency ServicePlanFrequency
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  addressId String?
+  address   ClientAddress? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  title String
+  notes String?
+
+  // Schedule anchor
+  startDate DateTime
+  endDate   DateTime?
+
+  // Weekly/Biweekly: preferred day of week (0=Sunday..6=Saturday)
+  dayOfWeek Int?
+
+  // Monthly: day-of-month (1..31). If null, derived from startDate.
+  dayOfMonth Int?
+
+  // Price per visit (cents)
+  pricePerVisitCents Int?
+
+  // Used to avoid regenerating old dates repeatedly
+  lastGeneratedAt DateTime?
+
+  // Generated jobs (or manually linked jobs)
+  jobs Job[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([frequency])
+  @@index([startDate])
 }
