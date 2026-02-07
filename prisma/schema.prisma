@@ -69,6 +69,108 @@ enum InvoiceNoteChannel {
   OTHER
 }
 
+enum ExpenseCategory {
+  MATERIALS
+  FUEL
+  EQUIPMENT
+  REPAIRS
+  SUBCONTRACTOR
+  LABOR
+  MARKETING
+  SOFTWARE
+  INSURANCE
+  FEES
+  OTHER
+}
+
+enum ClientUserRole {
+  OWNER
+  MEMBER
+}
+
+enum PaymentStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+// --- INVITES + STAFF (EMPLOYEES) ---
+
+enum InviteKind {
+  CLIENT_PORTAL
+  STAFF
+}
+
+enum StaffRole {
+  ADMIN
+  STAFF
+}
+
+model ClientInvite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+
+  kind InviteKind @default(CLIENT_PORTAL)
+
+  // Who is invited
+  email String
+
+  // Token in URL
+  token     String   @unique
+  expiresAt DateTime
+
+  // Target client + role
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  role ClientUserRole @default(OWNER)
+
+  // Audit
+  createdByUserId String?
+
+  @@index([clientId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model StaffUser {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  clerkUserId String @unique
+
+  role StaffRole @default(STAFF)
+
+  // Optional: fine-grained permissions later
+  // TODO: Replace with a real permissions table if needed
+  permissionsJson String?
+
+  @@index([role])
+}
+
+model StaffInvite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+
+  kind InviteKind @default(STAFF)
+
+  email String
+
+  token     String   @unique
+  expiresAt DateTime
+
+  role StaffRole @default(STAFF)
+
+  createdByUserId String?
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
 model Lead {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -159,16 +261,50 @@ model Client {
   tags  String?
   notes String?
 
+  // ✅ Stripe
+  stripeCustomerId String? @unique
+
   leads        Lead[]
   addresses    ClientAddress[]
   tasks        Task[]
   jobs         Job[]
-  servicePlans ServicePlan[] // ✅ opposite side for ServicePlan.client
+  servicePlans ServicePlan[]
+  expenses     Expense[]
+  users        ClientUser[]
+  invites ClientInvite[]
+
+  // ✅ Saved cards
+  paymentMethods ClientPaymentMethod[]
+
+  autopayEnabled Boolean @default(false) // ✅ autopay toggle (MVP)
+  // TODO: Add autopay rules later (charge on issue vs due date, retry rules, day/time windows), add autopay failed state + last attempt timestamps later .
 
   @@index([createdAt])
   @@index([name])
   @@index([email])
   @@index([phone])
+}
+
+model ClientPaymentMethod {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  stripePaymentMethodId String @unique
+
+  brand    String?
+  last4    String?
+  expMonth Int?
+  expYear  Int?
+
+  isDefault Boolean @default(false)
+
+  // TODO: Add billing details (name, zip) later if needed.
+
+  @@index([clientId])
+  @@index([isDefault])
 }
 
 model ClientAddress {
@@ -190,10 +326,24 @@ model ClientAddress {
   isPrimary Boolean @default(false)
 
   jobs         Job[]
-  servicePlans ServicePlan[] // ✅ opposite side for ServicePlan.address
+  servicePlans ServicePlan[]
 
   @@index([clientId])
   @@index([isPrimary])
+}
+
+model ClientUser {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  clerkUserId String @unique
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  role ClientUserRole @default(OWNER)
+
+  @@index([clientId])
 }
 
 model Job {
@@ -206,15 +356,12 @@ model Job {
   title String
   notes String?
 
-  // scheduling
   scheduledStart DateTime?
   scheduledEnd   DateTime?
 
-  // money
   estimatedPriceCents Int?
   actualPriceCents    Int?
 
-  // relations
   clientId String
   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -230,6 +377,8 @@ model Job {
 
   invoice Invoice?
 
+  expenses Expense[]
+
   @@unique([servicePlanId, scheduledStart])
   @@index([servicePlanId])
   @@index([status])
@@ -244,28 +393,54 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Business identifiers
-  number   Int       @unique // simple incrementing integer
+  number   Int       @unique
   issuedAt DateTime  @default(now())
   dueAt    DateTime?
 
-  // Amounts
   totalCents      Int
   amountPaidCents Int @default(0)
 
-  // Payment tracking (MVP)
   paidAt        DateTime?
   paymentMethod PaymentMethod?
 
   notes InvoiceNote[]
 
-  // Relations (1 invoice per job for MVP)
+  payments Payment[]
+
   jobId String @unique
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([issuedAt])
   @@index([dueAt])
   @@index([paidAt])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  status PaymentStatus @default(CREATED)
+
+  amountCents Int
+  currency    String @default("usd")
+
+  method PaymentMethod?
+
+  stripePaymentIntentId String  @unique
+  stripeChargeId        String? @unique
+
+  failureCode    String?
+  failureMessage String?
+
+  rawEventId String?
+
+  @@index([invoiceId])
+  @@index([createdAt])
+  @@index([status])
 }
 
 model InvoiceNote {
@@ -278,7 +453,7 @@ model InvoiceNote {
   channel InvoiceNoteChannel
   body    String
 
-  createdByUserId String? // Clerk user id
+  createdByUserId String?
 
   @@index([invoiceId])
   @@index([createdAt])
@@ -302,27 +477,49 @@ model ServicePlan {
   title String
   notes String?
 
-  // Schedule anchor
   startDate DateTime
   endDate   DateTime?
 
-  // Weekly/Biweekly: preferred day of week (0=Sunday..6=Saturday)
-  dayOfWeek Int?
-
-  // Monthly: day-of-month (1..31). If null, derived from startDate.
+  dayOfWeek  Int?
   dayOfMonth Int?
 
-  // Price per visit (cents)
   pricePerVisitCents Int?
 
-  // Used to avoid regenerating old dates repeatedly
   lastGeneratedAt DateTime?
 
-  // Generated jobs (or manually linked jobs)
   jobs Job[]
+
+  // TODO: Autopay flags + scheduling later (cron + retries).
 
   @@index([clientId])
   @@index([status])
   @@index([frequency])
   @@index([startDate])
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  occurredAt DateTime @default(now())
+
+  category ExpenseCategory @default(OTHER)
+  vendor   String?
+  memo     String?
+
+  amountCents Int
+
+  jobId String?
+  job   Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+
+  @@index([occurredAt])
+  @@index([category])
+  @@index([jobId])
+  @@index([clientId])
 }

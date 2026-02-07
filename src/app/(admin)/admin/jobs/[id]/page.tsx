@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import JobEditorClient from "@/components/admin/JobEditorClient";
 import InvoiceActionsClient from "@/components/invoices/InvoiceActionsClient";
 import InvoiceNotesClient, { type InvoiceNoteRow } from "@/components/invoices/InvoiceNotesClient";
+import ChargeInvoiceButton from "@/components/admin/ChargeInvoiceButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function toDatetimeLocalValueFromIso(iso: string) {
@@ -95,6 +96,8 @@ export default async function AdminJobDetailPage({
       body: n.body,
     })) ?? [];
 
+  const isInvoiceUnpaid = !!invoice && !invoice.paidAtIso;
+
   return (
     <div className="space-y-6">
       <div>
@@ -105,8 +108,11 @@ export default async function AdminJobDetailPage({
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle className="text-base">Invoice & Collections</CardTitle>
+
+          {/* ✅ Admin quick action */}
+          {isInvoiceUnpaid ? <ChargeInvoiceButton invoiceId={invoice!.id} /> : null}
         </CardHeader>
 
         <CardContent className="space-y-4">

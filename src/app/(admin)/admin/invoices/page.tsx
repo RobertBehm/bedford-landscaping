@@ -4,7 +4,15 @@ import { requireOrgAdmin } from "@/lib/authz";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AGING_BUCKETS, agingWhere, normalizeBucket, daysPastDue, type AgingBucket } from "@/lib/invoice-aging";
+import {
+  AGING_BUCKETS,
+  agingWhere,
+  normalizeBucket,
+  daysPastDue,
+  type AgingBucket,
+} from "@/lib/invoice-aging";
+
+import ChargeInvoiceButton from "@/components/admin/ChargeInvoiceButton";
 
 function money(cents: number | null | undefined) {
   const v = cents ?? 0;
@@ -16,6 +24,25 @@ type SearchParams = {
   status?: string; // "OPEN" | "PAID" | ""
   bucket?: string; // AgingBucket
 };
+
+// Small helper so clicking the charge button doesn't activate the Link
+function StopLinkNav({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        // also stop on mousedown so it doesn't focus/trigger Link
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default async function AdminInvoicesPage({
   searchParams,
@@ -39,7 +66,6 @@ export default async function AdminInvoicesPage({
         ? { paidAt: null }
         : undefined;
 
-  // Aging buckets are meaningful mainly for OPEN invoices, but we won't block it.
   const bucketFilter = bucket ? agingWhere(bucket, now) : undefined;
 
   const qFilter = q
@@ -174,8 +200,16 @@ export default async function AdminInvoicesPage({
                           {inv.paidAt ? ` • Paid ${inv.paidAt.toISOString().slice(0, 10)}` : " • Unpaid"}
                         </div>
 
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          TODO: Add “Send reminder” + reminder history.
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {unpaid ? (
+                            <StopLinkNav>
+                              <ChargeInvoiceButton invoiceId={inv.id} compact />
+                            </StopLinkNav>
+                          ) : null}
+
+                          <div className="text-xs text-muted-foreground">
+                            TODO: Add “Send reminder” + reminder history.
+                          </div>
                         </div>
                       </div>
 
@@ -185,7 +219,11 @@ export default async function AdminInvoicesPage({
                           Paid: {money(inv.amountPaidCents)}
                         </div>
                         <div className="mt-1 text-xs">
-                          <span className={unpaid && dpd && dpd > 14 ? "text-destructive" : "text-muted-foreground"}>
+                          <span
+                            className={
+                              unpaid && dpd && dpd > 14 ? "text-destructive" : "text-muted-foreground"
+                            }
+                          >
                             {rightLabel}
                           </span>
                         </div>

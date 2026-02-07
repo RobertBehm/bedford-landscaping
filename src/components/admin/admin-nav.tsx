@@ -10,6 +10,8 @@ export const adminNav: AdminNavItem[] = [
       { title: "Dashboard", href: "/admin" },
       { title: "Analytics", href: "/admin/analytics" },
       { title: "Tasks", href: "/admin/tasks" },
+      { title: "Expenses", href: "/admin/expenses" },
+      { title: "Profit", href: "/admin/reports/profit" },
     ],
   },
   {
@@ -43,6 +45,9 @@ export const adminNav: AdminNavItem[] = [
     children: [
       { title: "Settings", href: "/admin/settings" },
       { title: "Team", href: "/admin/team" },
+      { title: "Invite Employee", href: "/admin/team/invite" },
+      { title: "Docs", href: "/admin/docs" },
     ],
   },
 ];
+ 
